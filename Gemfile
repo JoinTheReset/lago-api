@@ -59,9 +59,12 @@ gem 'multipart-post'
 
 # Monitoring
 gem 'newrelic_rpm'
-gem 'sentry-rails', '~> 5.12.0'
-gem 'sentry-ruby', '~> 5.12.0'
-gem 'sentry-sidekiq', '~> 5.12.0'
+gem 'opentelemetry-exporter-otlp'
+gem 'opentelemetry-instrumentation-all'
+gem 'opentelemetry-sdk'
+gem 'sentry-rails', '~> 5.16', '>= 5.16.1'
+gem 'sentry-ruby', '~> 5.16', '>= 5.16.1'
+gem 'sentry-sidekiq', '~> 5.16', '>= 5.16.1'
 
 # Storage
 gem 'aws-sdk-s3', require: false

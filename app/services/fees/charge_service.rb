@@ -22,9 +22,13 @@ module Fees
         result.fees.each do |fee|
           fee.save!
 
-          if invoice.draft? && fee.true_up_parent_fee.nil? && adjusted_fee(fee.group, fee.grouped_by)
-            adjusted_fee(fee.group, fee.grouped_by).update!(fee:)
-          end
+          next unless invoice.draft? && fee.true_up_parent_fee.nil? && adjusted_fee(
+            group: fee.group,
+            charge_filter: fee.charge_filter,
+            grouped_by: fee.grouped_by,
+          )
+
+          adjusted_fee(group: fee.group, charge_filter: fee.charge_filter, grouped_by: fee.grouped_by).update!(fee:)
         end
       end
 
@@ -88,8 +92,9 @@ module Fees
       # NOTE: Build fee for case when there is adjusted fee and units or amount has been adjusted.
       # Base fee creation flow handles case when only name has been adjusted
       if invoice.draft? && (adjusted = adjusted_fee(
-        group,
-        amount_result.grouped_by,
+        group:,
+        charge_filter:,
+        grouped_by: amount_result.grouped_by,
       )) && !adjusted.adjusted_display_name?
         adjustement_result = Fees::InitFromAdjustedChargeFeeService.call(
           adjusted_fee: adjusted,
@@ -137,26 +142,32 @@ module Fees
         precise_unit_amount: amount_result.unit_amount,
         amount_details: amount_result.amount_details,
         grouped_by: amount_result.grouped_by || {},
-        charge_filter:,
+        charge_filter_id: charge_filter&.id,
       )
 
-      if (adjusted = adjusted_fee(group, amount_result.grouped_by))&.adjusted_display_name?
+      if (adjusted = adjusted_fee(group:, charge_filter:, grouped_by: amount_result.grouped_by))&.adjusted_display_name?
         new_fee.invoice_display_name = adjusted.invoice_display_name
       end
 
       result.fees << new_fee
     end
 
-    def adjusted_fee(group, grouped_by)
+    def adjusted_fee(group:, charge_filter:, grouped_by:)
       @adjusted_fee ||= {}
 
-      key = [group&.id, (grouped_by || {}).map { |k, v| "#{k}-#{v}" }.sort.join('|')].compact.join('|')
+      key = [
+        group&.id,
+        charge_filter&.id,
+        (grouped_by || {}).map do |k, v|
+          "#{k}-#{v}"
+        end.sort.join('|'),
+      ].compact.join('|')
       key = 'default' if key.blank?
 
       return @adjusted_fee[key] if @adjusted_fee.key?(key)
 
       scope = AdjustedFee
-        .where(invoice:, subscription:, charge:, group:, fee_type: :charge)
+        .where(invoice:, subscription:, charge:, group:, charge_filter:, fee_type: :charge)
         .where("(properties->>'charges_from_datetime')::timestamptz = ?", boundaries.charges_from_datetime&.iso8601(3))
         .where("(properties->>'charges_to_datetime')::timestamptz = ?", boundaries.charges_to_datetime&.iso8601(3))
 
@@ -182,6 +193,7 @@ module Fees
         persist_recurring_value(
           aggregation_result.aggregations || [aggregation_result],
           group,
+          charge_filter,
         )
       end
 
@@ -219,7 +231,7 @@ module Fees
       )
     end
 
-    def persist_recurring_value(aggregation_results, group)
+    def persist_recurring_value(aggregation_results, group, charge_filter)
       return if is_current_usage
 
       # NOTE: Only weighted sum aggregation is setting this value
@@ -233,6 +245,7 @@ module Fees
           organization_id: billable_metric.organization_id,
           external_subscription_id: subscription.external_id,
           group_id: group&.id,
+          charge_filter_id: charge_filter&.id,
           billable_metric_id: billable_metric.id,
           added_at: aggregation_result.recurring_updated_at,
           grouped_by: aggregation_result.grouped_by || {},
@@ -246,12 +259,12 @@ module Fees
     def aggregation_filters(group:, charge_filter: nil)
       filters = { group: }
 
-      if charge.standard? && charge.properties['grouped_by'].present?
-        filters[:grouped_by] = charge.properties['grouped_by']
-      end
+      properties = charge_filter&.properties || charge.properties
+      filters[:grouped_by] = properties['grouped_by'] if charge.standard? && properties['grouped_by'].present?
 
       if charge_filter.present?
         result = ChargeFilters::MatchingAndIgnoredService.call(filter: charge_filter)
+        filters[:charge_filter] = charge_filter
         filters[:matching_filters] = result.matching_filters
         filters[:ignored_filters] = result.ignored_filters
       end

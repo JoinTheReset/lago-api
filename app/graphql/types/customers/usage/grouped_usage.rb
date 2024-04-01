@@ -37,9 +37,9 @@ module Types
         end
 
         def filters
-          object
-            .select(&:charge_filter)
-            .sort_by { |f| f.charge_filter.display_name }
+          return [] unless object.first.has_charge_filters?
+
+          object.sort_by { |f| f.charge_filter&.display_name }
         end
       end
     end

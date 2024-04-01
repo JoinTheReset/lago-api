@@ -9,12 +9,33 @@ RSpec.describe Invoice, type: :model do
 
   it_behaves_like 'paper_trail traceable'
 
+  describe 'validation' do
+    describe 'of payment dispute lost absence' do
+      context 'when invoice is not voided' do
+        let(:invoice) { create(:invoice) }
+
+        specify do
+          expect(invoice).not_to validate_absence_of(:payment_dispute_lost_at)
+        end
+      end
+
+      context 'when invoice is voided' do
+        let(:invoice) { create(:invoice, status: :voided) }
+
+        specify do
+          expect(invoice).to validate_absence_of(:payment_dispute_lost_at)
+        end
+      end
+    end
+  end
+
   describe 'sequential_id' do
     let(:customer) { create(:customer, organization:) }
-    let(:invoice) { build(:invoice, customer:, organization:, organization_sequential_id: 0) }
+    let(:invoice) { build(:invoice, customer:, organization:, organization_sequential_id: 0, status: :generating) }
 
     it 'assigns a sequential id and organization sequential id to a new invoice' do
-      invoice.save
+      invoice.save!
+      invoice.finalized!
 
       aggregate_failures do
         expect(invoice).to be_valid
@@ -30,7 +51,8 @@ RSpec.describe Invoice, type: :model do
       end
 
       it 'does not replace the sequential_id and organization_sequential_id' do
-        invoice.save
+        invoice.save!
+        invoice.finalized!
 
         aggregate_failures do
           expect(invoice).to be_valid
@@ -47,7 +69,8 @@ RSpec.describe Invoice, type: :model do
       end
 
       it 'takes the next available id' do
-        invoice.save
+        invoice.save!
+        invoice.finalized!
 
         aggregate_failures do
           expect(invoice).to be_valid
@@ -63,7 +86,8 @@ RSpec.describe Invoice, type: :model do
       end
 
       it 'scopes the sequence to the organization' do
-        invoice.save
+        invoice.save!
+        invoice.finalized!
 
         aggregate_failures do
           expect(invoice).to be_valid
@@ -83,7 +107,8 @@ RSpec.describe Invoice, type: :model do
       end
 
       it 'scopes the organization_sequential_id to the organization and month' do
-        invoice.save
+        invoice.save!
+        invoice.finalized!
 
         aggregate_failures do
           expect(invoice).to be_valid
@@ -98,10 +123,11 @@ RSpec.describe Invoice, type: :model do
     let(:organization) { create(:organization, name: 'LAGO') }
     let(:customer) { create(:customer, organization:) }
     let(:subscription) { create(:subscription, organization:, customer:) }
-    let(:invoice) { build(:invoice, customer:, organization:, organization_sequential_id: 0) }
+    let(:invoice) { build(:invoice, customer:, organization:, organization_sequential_id: 0, status: :generating) }
 
     it 'generates the invoice number' do
-      invoice.save
+      invoice.save!
+      invoice.finalized!
       organization_id_substring = organization.id.last(4).upcase
 
       expect(invoice.number).to eq("LAG-#{organization_id_substring}-001-001")
@@ -111,7 +137,8 @@ RSpec.describe Invoice, type: :model do
       let(:organization) { create(:organization, document_numbering: 'per_organization', name: 'lago') }
 
       it 'scopes the organization_sequential_id to the organization and month' do
-        invoice.save
+        invoice.save!
+        invoice.finalized!
         organization_id_substring = organization.id.last(4).upcase
 
         expect(invoice.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-001")
@@ -126,7 +153,8 @@ RSpec.describe Invoice, type: :model do
         end
 
         it 'scopes the organization_sequential_id to the organization and month' do
-          invoice.save
+          invoice.save!
+          invoice.finalized!
 
           organization_id_substring = organization.id.last(4).upcase
 
@@ -143,11 +171,116 @@ RSpec.describe Invoice, type: :model do
         end
 
         it 'scopes the organization_sequential_id to the organization and month' do
-          invoice.save
+          invoice.save!
+          invoice.finalized!
 
           organization_id_substring = organization.id.last(4).upcase
 
           expect(invoice.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-016")
+        end
+      end
+
+      context 'with existing draft invoices that have generated sequential ids' do
+        let(:created_at) { Time.now.utc }
+
+        let(:invoice1) do
+          create(
+            :invoice,
+            customer:,
+            organization:,
+            sequential_id: 4,
+            organization_sequential_id: 14,
+            created_at:,
+            status: :draft,
+            number: "LAG-#{organization.id.last(4).upcase}-#{Time.now.utc.strftime('%Y%m')}-014",
+          )
+        end
+        let(:invoice2) do
+          create(
+            :invoice,
+            customer:,
+            organization:,
+            sequential_id: 5,
+            organization_sequential_id: 15,
+            created_at:,
+            number: "LAG-#{organization.id.last(4).upcase}-#{Time.now.utc.strftime('%Y%m')}-015",
+          )
+        end
+
+        before do
+          invoice1
+          invoice2
+        end
+
+        it 'scopes the organization_sequential_id to the organization and month' do
+          invoice.save!
+          invoice.finalized!
+
+          organization_id_substring = organization.id.last(4).upcase
+
+          expect(invoice.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-016")
+
+          invoice1.update!(payment_due_date: invoice1.payment_due_date + 1.day)
+          invoice2.update!(payment_due_date: invoice2.payment_due_date + 1.day)
+
+          expect(invoice1.reload.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-014")
+          expect(invoice2.reload.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-015")
+
+          invoice1.finalized!
+
+          expect(invoice1.reload.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-014")
+        end
+      end
+
+      context 'with existing draft invoices that does not have generated sequential ids' do
+        let(:created_at) { Time.now.utc }
+
+        let(:invoice1) do
+          create(
+            :invoice,
+            customer:,
+            organization:,
+            sequential_id: nil,
+            organization_sequential_id: 0,
+            created_at:,
+            status: :draft,
+            number: "LAG-#{organization.id.last(4).upcase}-DRAFT",
+          )
+        end
+        let(:invoice2) do
+          create(
+            :invoice,
+            customer:,
+            organization:,
+            sequential_id: 4,
+            organization_sequential_id: 14,
+            created_at:,
+            number: "LAG-#{organization.id.last(4).upcase}-#{Time.now.utc.strftime('%Y%m')}-014",
+          )
+        end
+
+        before do
+          invoice1
+          invoice2
+        end
+
+        it 'scopes the organization_sequential_id to the organization and month' do
+          invoice.save!
+          invoice.finalized!
+
+          organization_id_substring = organization.id.last(4).upcase
+
+          expect(invoice.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-015")
+
+          invoice1.update!(payment_due_date: invoice1.payment_due_date + 1.day)
+          invoice2.update!(payment_due_date: invoice2.payment_due_date + 1.day)
+
+          expect(invoice1.reload.number).to eq("LAG-#{organization_id_substring}-DRAFT")
+          expect(invoice2.reload.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-014")
+
+          invoice1.finalized!
+
+          expect(invoice1.reload.number).to eq("LAG-#{organization_id_substring}-#{Time.now.utc.strftime('%Y%m')}-016")
         end
       end
     end
@@ -318,186 +451,366 @@ RSpec.describe Invoice, type: :model do
   describe '#voidable?' do
     subject(:voidable) { invoice.voidable? }
 
-    context 'when invoice has a voided credit note' do
-      let(:invoice) { create(:invoice, status:, payment_status:) }
+    context 'when payment disputed was lost' do
+      let(:payment_dispute_lost_at) { DateTime.current - 1.day }
 
-      before { create(:credit_note, credit_status: :voided, invoice:) }
+      context 'when invoice has a voided credit note' do
+        let(:invoice) { create(:invoice, status:, payment_status:, payment_dispute_lost_at:) }
 
-      context 'when invoice is not finalized' do
-        let(:status) { [:draft, :voided].sample }
+        before { create(:credit_note, credit_status: :voided, invoice:) }
 
-        context 'when invoice is pending' do
-          let(:payment_status) { :pending }
+        context 'when invoice is finalized' do
+          let(:status) { :finalized }
 
-          it 'returns false' do
-            expect(voidable).to be false
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
-        end
 
-        context 'when invoice is failed' do
-          let(:payment_status) { :failed }
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
 
-          it 'returns false' do
-            expect(voidable).to be false
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
-        end
 
-        context 'when invoice is succeeded' do
-          let(:payment_status) { :succeeded }
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
 
-          it 'returns false' do
-            expect(voidable).to be false
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
       end
 
-      context 'when invoice is finalized' do
-        let(:status) { :finalized }
+      context 'when invoice has a non-voided credit note' do
+        let(:invoice) { create(:invoice, status:, payment_status:, payment_dispute_lost_at:) }
 
-        context 'when invoice is pending' do
-          let(:payment_status) { :pending }
+        before { create(:credit_note, invoice:) }
 
-          it 'returns true' do
-            expect(voidable).to be true
+        context 'when invoice is finalized' do
+          let(:status) { :finalized }
+
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+        end
+      end
+
+      context 'when invoice has no credit notes' do
+        let(:invoice) { build_stubbed(:invoice, status:, payment_status:, payment_dispute_lost_at:) }
+
+        context 'when invoice is not finalized' do
+          let(:status) { :draft }
+
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
 
-        context 'when invoice is failed' do
-          let(:payment_status) { :failed }
+        context 'when invoice is finalized' do
+          let(:status) { :finalized }
 
-          it 'returns true' do
-            expect(voidable).to be true
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
-        end
 
-        context 'when invoice is succeeded' do
-          let(:payment_status) { :succeeded }
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
 
-          it 'returns false' do
-            expect(voidable).to be false
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
       end
     end
 
-    context 'when invoice has a non-voided credit note' do
-      let(:invoice) { create(:invoice, status:, payment_status:) }
+    context 'when payment is not disputed' do
+      let(:payment_dispute_lost_at) { nil }
 
-      before { create(:credit_note, invoice:) }
+      context 'when invoice has a voided credit note' do
+        let(:invoice) { create(:invoice, status:, payment_status:, payment_dispute_lost_at:) }
 
-      context 'when invoice is not finalized' do
-        let(:status) { [:draft, :voided].sample }
+        before { create(:credit_note, credit_status: :voided, invoice:) }
 
-        context 'when invoice is pending' do
-          let(:payment_status) { :pending }
+        context 'when invoice is not finalized' do
+          let(:status) { [:draft, :voided].sample }
 
-          it 'returns false' do
-            expect(voidable).to be false
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
 
-        context 'when invoice is failed' do
-          let(:payment_status) { :failed }
+        context 'when invoice is finalized' do
+          let(:status) { :finalized }
 
-          it 'returns false' do
-            expect(voidable).to be false
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns true' do
+              expect(voidable).to be true
+            end
           end
-        end
 
-        context 'when invoice is succeeded' do
-          let(:payment_status) { :succeeded }
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
 
-          it 'returns false' do
-            expect(voidable).to be false
+            it 'returns true' do
+              expect(voidable).to be true
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
       end
 
-      context 'when invoice is finalized' do
-        let(:status) { :finalized }
+      context 'when invoice has a non-voided credit note' do
+        let(:invoice) { create(:invoice, status:, payment_status:, payment_dispute_lost_at:) }
 
-        context 'when invoice is pending' do
-          let(:payment_status) { :pending }
+        before { create(:credit_note, invoice:) }
 
-          it 'returns false' do
-            expect(voidable).to be false
+        context 'when invoice is not finalized' do
+          let(:status) { [:draft, :voided].sample }
+
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
 
-        context 'when invoice is failed' do
-          let(:payment_status) { :failed }
+        context 'when invoice is finalized' do
+          let(:status) { :finalized }
 
-          it 'returns false' do
-            expect(voidable).to be false
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+        end
+      end
+
+      context 'when invoice has no credit notes' do
+        let(:invoice) { build_stubbed(:invoice, status:, payment_status:, payment_dispute_lost_at:) }
+
+        context 'when invoice is not finalized' do
+          let(:status) { [:draft, :voided].sample }
+
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
 
-        context 'when invoice is succeeded' do
-          let(:payment_status) { :succeeded }
+        context 'when invoice is finalized' do
+          let(:status) { :finalized }
 
-          it 'returns false' do
-            expect(voidable).to be false
+          context 'when invoice is pending' do
+            let(:payment_status) { :pending }
+
+            it 'returns true' do
+              expect(voidable).to be true
+            end
+          end
+
+          context 'when invoice is failed' do
+            let(:payment_status) { :failed }
+
+            it 'returns true' do
+              expect(voidable).to be true
+            end
+          end
+
+          context 'when invoice is succeeded' do
+            let(:payment_status) { :succeeded }
+
+            it 'returns false' do
+              expect(voidable).to be false
+            end
           end
         end
       end
     end
+  end
 
-    context 'when invoice has no credit notes' do
-      let(:invoice) { build_stubbed(:invoice, status:, payment_status:) }
+  describe '#mark_as_dispute_lost!' do
+    subject(:mark_as_dispute_lost_call) { invoice.mark_as_dispute_lost! }
 
-      context 'when invoice is not finalized' do
-        let(:status) { [:draft, :voided].sample }
+    context 'when record is new' do
+      let(:invoice) { build(:invoice, payment_dispute_lost_at:) }
 
-        context 'when invoice is pending' do
-          let(:payment_status) { :pending }
+      context 'when payment is not disputed' do
+        let(:payment_dispute_lost_at) { nil }
 
-          it 'returns false' do
-            expect(voidable).to be false
-          end
-        end
-
-        context 'when invoice is failed' do
-          let(:payment_status) { :failed }
-
-          it 'returns false' do
-            expect(voidable).to be false
-          end
-        end
-
-        context 'when invoice is succeeded' do
-          let(:payment_status) { :succeeded }
-
-          it 'returns false' do
-            expect(voidable).to be false
-          end
+        it 'changes payment disputed lost date' do
+          expect { mark_as_dispute_lost_call }.to change(invoice, :payment_dispute_lost_at).from(nil)
         end
       end
 
-      context 'when invoice is finalized' do
-        let(:status) { :finalized }
+      context 'when payment is disputed' do
+        let(:payment_dispute_lost_at) { DateTime.current - 1.day }
 
-        context 'when invoice is pending' do
-          let(:payment_status) { :pending }
-
-          it 'returns true' do
-            expect(voidable).to be true
-          end
+        it 'does not change payment dispute lost date' do
+          expect { mark_as_dispute_lost_call }.not_to change(invoice, :payment_dispute_lost_at)
         end
+      end
+    end
 
-        context 'when invoice is failed' do
-          let(:payment_status) { :failed }
+    context 'when record already exists' do
+      let(:invoice) { create(:invoice, payment_dispute_lost_at:) }
 
-          it 'returns true' do
-            expect(voidable).to be true
-          end
+      context 'when payment is not disputed' do
+        let(:payment_dispute_lost_at) { nil }
+
+        it 'changes payment dispute lost date' do
+          expect { mark_as_dispute_lost_call }.to change(invoice, :payment_dispute_lost_at).from(nil)
         end
+      end
 
-        context 'when invoice is succeeded' do
-          let(:payment_status) { :succeeded }
+      context 'when payment is disputed' do
+        let(:payment_dispute_lost_at) { DateTime.current - 1.day }
 
-          it 'returns false' do
-            expect(voidable).to be false
-          end
+        it 'does not change payment dispute lost date' do
+          expect { mark_as_dispute_lost_call }.not_to change(invoice, :payment_dispute_lost_at)
         end
       end
     end

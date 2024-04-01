@@ -25,7 +25,7 @@ RSpec.describe Webhooks::Invoices::VoidedService do
       allow(lago_client).to receive(:post_with_response)
     end
 
-    it 'builds payload with invoice.drafted webhook type' do
+    it 'builds payload with invoice.voided webhook type' do
       webhook_invoice_service.call
 
       expect(LagoHttpClient::Client).to have_received(:new)
