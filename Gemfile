@@ -71,7 +71,7 @@ gem 'sentry-sidekiq', '~> 5.12.0'
 
 # Storage
 gem 'aws-sdk-s3', require: false
-gem 'google-cloud-storage', require: false
+gem 'google-cloud-storage', '>= 1.45.0', require: false
 
 # Templating
 gem 'slim'
