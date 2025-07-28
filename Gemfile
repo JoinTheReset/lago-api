@@ -12,7 +12,7 @@ gem 'bootsnap', require: false
 gem 'clockwork', require: false
 gem 'parallel'
 gem 'puma', '~> 6.4'
-gem 'rails', '~> 7.0.8'
+gem 'rails', '~> 7.0.8', '>= 7.0.8.5'
 gem 'sidekiq'
 
 # Security
@@ -30,7 +30,7 @@ gem 'kaminari-activerecord'
 gem 'paper_trail'
 gem 'pg'
 gem 'ransack', '~> 4.0.0'
-gem 'scenic'
+gem 'scenic', '>= 1.8.0'
 gem 'with_advisory_lock'
 
 # Currencies, Countries, Timezones...
@@ -53,7 +53,7 @@ gem 'activejob-traceable'
 gem 'analytics-ruby', '~> 2.4.0', require: 'segment/analytics'
 
 # Logging
-gem 'lograge'
+gem 'lograge', '>= 0.14.0'
 gem 'logstash-event'
 
 # HTTP and Multipart support
@@ -65,7 +65,7 @@ gem 'newrelic_rpm'
 gem 'opentelemetry-exporter-otlp'
 gem 'opentelemetry-instrumentation-all'
 gem 'opentelemetry-sdk'
-gem 'sentry-rails', '~> 5.12.0'
+gem 'sentry-rails', '~> 5.13.0'
 gem 'sentry-ruby', '~> 5.12.0'
 gem 'sentry-sidekiq', '~> 5.12.0'
 
@@ -75,7 +75,7 @@ gem 'google-cloud-storage', require: false
 
 # Templating
 gem 'slim'
-gem 'slim-rails'
+gem 'slim-rails', '>= 3.6.3'
 
 # Kafka
 gem 'karafka', '~> 2.4.0'
@@ -85,7 +85,7 @@ gem 'karafka-web', '~> 0.9.0'
 gem 'valvat', require: false
 
 group :development, :test, :staging do
-  gem 'factory_bot_rails'
+  gem 'factory_bot_rails', '>= 6.3.0'
   gem 'faker'
   gem 'timecop'
 end
@@ -96,7 +96,7 @@ group :development, :test do
   gem 'debug', platforms: %i[mri mingw x64_mingw]
   gem 'dotenv'
   gem 'i18n-tasks', git: 'https://github.com/glebm/i18n-tasks.git'
-  gem 'rspec-rails'
+  gem 'rspec-rails', '>= 6.1.2'
   gem 'simplecov', require: false
   gem 'webmock'
   gem 'awesome_print'
@@ -124,5 +124,5 @@ group :development do
   gem 'sass-rails'
   gem 'uglifier'
 
-  gem 'ruby-lsp-rails', require: false
+  gem 'ruby-lsp-rails', '>= 0.3.1', require: false
 end
