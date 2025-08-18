@@ -12,7 +12,7 @@ gem 'bootsnap', require: false
 gem 'clockwork', require: false
 gem 'parallel'
 gem 'puma', '~> 6.4'
-gem 'rails', '~> 7.0.8'
+gem 'rails', '~> 7.1.5', '>= 7.1.5.2'
 gem 'sidekiq'
 
 # Security
@@ -23,15 +23,15 @@ gem 'oauth2'
 gem 'rack-cors'
 
 # Database
-gem 'after_commit_everywhere'
+gem 'after_commit_everywhere', '>= 1.5.0'
 gem 'clickhouse-activerecord', git: 'https://github.com/getlago/clickhouse-activerecord.git'
-gem 'discard', '~> 1.2'
+gem 'discard', '~> 1.4', '>= 1.4.0'
 gem 'kaminari-activerecord'
-gem 'paper_trail'
+gem 'paper_trail', '>= 15.1.0'
 gem 'pg'
-gem 'ransack', '~> 4.0.0'
-gem 'scenic'
-gem 'with_advisory_lock'
+gem 'ransack', '~> 4.1.0'
+gem 'scenic', '>= 1.8.0'
+gem 'with_advisory_lock', '>= 5.0.0'
 
 # Currencies, Countries, Timezones...
 gem 'bigdecimal'
@@ -103,7 +103,7 @@ group :development, :test do
 end
 
 group :test do
-  gem 'database_cleaner-active_record'
+  gem 'database_cleaner-active_record', '>= 2.2.0'
   gem 'guard-rspec', require: false
   gem 'rspec-graphql_matchers'
   gem 'shoulda-matchers'
@@ -124,5 +124,5 @@ group :development do
   gem 'sass-rails'
   gem 'uglifier'
 
-  gem 'ruby-lsp-rails', require: false
+  gem 'ruby-lsp-rails', '>= 0.3.1', require: false
 end
